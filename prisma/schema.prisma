@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7: the connection URL no longer lives here — it's read by the CLI
+// (migrate/studio/generate) from prisma.config.ts, and by the app itself via
+// a driver adapter passed to `new PrismaClient({ adapter })`.
+// See docs/database/connection-management.md.
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  // Never a plain-text password — always a scrypt hash. Never listed in
+  // userResponseSchema, exactly like Appointment.internalNotes in Phase 3.
+  // See docs/fastify/20-jwt.md.
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  appointments Appointment[]
+}
+
+model Service {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  duration    Int // minutes
+  price       Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  appointments Appointment[]
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+model Appointment {
+  id        String            @id @default(uuid())
+  userId    String
+  serviceId String
+  date      DateTime          @db.Date
+  startTime String
+  endTime   String
+  status    AppointmentStatus @default(PENDING)
+  // Staff-only note — never listed in appointmentResponseSchema (Phase 3);
+  // proves the same serialization discipline applies to real DB data too.
+  internalNotes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  // DB-enforced double-booking guard: the same service can't be booked
+  // twice for the same date + start time. See docs/database/transactions.md.
+  @@unique([serviceId, date, startTime])
+  @@index([userId])
+}
